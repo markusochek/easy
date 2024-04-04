@@ -1,6 +1,7 @@
 const express = require('express');
 const EasyYandexS3 = require("easy-yandex-s3");
 const expressFileUpload = require('express-fileupload');
+const AWS = require('aws-sdk');
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
@@ -17,68 +18,67 @@ const s3 = new EasyYandexS3({
     debug: false
 });
 
-const AWS = require('aws-sdk');
 
 const mq = new AWS.SQS({
     'region': 'ru-central1',
     'endpoint': 'https://message-queue.api.cloud.yandex.net',
 });
 
-async function createQueue() {
-    params = {
-        'QueueName': 'mq_example_nodejs_sdk',
-    }
-
-    result = await mq.createQueue(params).promise();
-    queueUrl = result['QueueUrl'];
-
-    console.log('Queue created, URL: ' + queueUrl);
-
-    return queueUrl;
-}
-
-async function sendMessage(queueUrl) {
-    params = {
-        'QueueUrl': queueUrl,
-        'MessageBody': 'test message',
-    }
-
-    result = await mq.sendMessage(params).promise();
-
-    console.log('Message sent, ID: ' + result['MessageId']);
-}
-
-async function receiveMessage() {
-    params = {
-        'QueueUrl': queueUrl,
-        'WaitTimeSeconds': 10,
-    }
-
-    result = await mq.receiveMessage(params).promise();
-
-    result['Messages'].forEach(async function(msg) {
-        console.log('Message received')
-        console.log('ID: ' + msg['MessageId'])
-        console.log('Body: ' + msg['Body'])
-
-        deleteParams = {
-            'QueueUrl': queueUrl,
-            'ReceiptHandle': msg['ReceiptHandle'],
-        }
-
-        await mq.deleteMessage(deleteParams).promise()
-    })
-}
-
-async function deleteQueue() {
-    params = {
-        'QueueUrl': queueUrl,
-    }
-
-    result = await mq.deleteQueue(params).promise();
-
-    console.log('Queue deleted')
-}
+// async function createQueue() {
+//     params = {
+//         'QueueName': 'mq_example_nodejs_sdk',
+//     }
+//
+//     result = await mq.createQueue(params).promise();
+//     queueUrl = result['QueueUrl'];
+//
+//     console.log('Queue created, URL: ' + queueUrl);
+//
+//     return queueUrl;
+// }
+//
+// async function sendMessage(queueUrl) {
+//     params = {
+//         'QueueUrl': queueUrl,
+//         'MessageBody': 'test message',
+//     }
+//
+//     result = await mq.sendMessage(params).promise();
+//
+//     console.log('Message sent, ID: ' + result['MessageId']);
+// }
+//
+// async function receiveMessage() {
+//     params = {
+//         'QueueUrl': queueUrl,
+//         'WaitTimeSeconds': 10,
+//     }
+//
+//     result = await mq.receiveMessage(params).promise();
+//
+//     result['Messages'].forEach(async function(msg) {
+//         console.log('Message received')
+//         console.log('ID: ' + msg['MessageId'])
+//         console.log('Body: ' + msg['Body'])
+//
+//         deleteParams = {
+//             'QueueUrl': queueUrl,
+//             'ReceiptHandle': msg['ReceiptHandle'],
+//         }
+//
+//         await mq.deleteMessage(deleteParams).promise()
+//     })
+// }
+//
+// async function deleteQueue() {
+//     params = {
+//         'QueueUrl': queueUrl,
+//     }
+//
+//     result = await mq.deleteQueue(params).promise();
+//
+//     console.log('Queue deleted')
+// }
 
 app.post("/addImage", async function (request, response) {
     // const upload = await s3.Upload({buffer: request.files.photo.data}, "/gaika/");
@@ -90,15 +90,11 @@ app.post("/addImage", async function (request, response) {
     queueUrl = result['QueueUrl'];
 
     console.log('Queue created, URL: ' + queueUrl);
-    // queueUrl = await createQueue();
-    // await sendMessage(queueUrl);
-    // await receiveMessage(queueUrl);
-    // await deleteQueue(queueUrl);
 
     response.send(
         {
             'statusCode': 200,
-            'body': "fwefwfewfweewewfefw"
+            'body': queueUrl
         }
     )
 });
