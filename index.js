@@ -1,7 +1,7 @@
 const express = require('express');
 const EasyYandexS3 = require("easy-yandex-s3");
 const expressFileUpload = require('express-fileupload');
-const AWS = require('aws-sdk');
+const { SQSClient, CreateQueueCommand, SendMessageCommand, ReceiveMessageCommand} = require("@aws-sdk/client-sqs");
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
@@ -18,79 +18,75 @@ const s3 = new EasyYandexS3({
     debug: false
 });
 
+async function createQueue(client, QueueName) {
+    const input = {
+        QueueName: QueueName,
+    };
+    const command = new CreateQueueCommand(input);
+    const response = await client.send(command);
 
-const mq = new AWS.SQS({
+    return response.QueueUrl;
+}
+
+async function sendMessage(queueUrl, message) {
+    const input = {
+        QueueUrl: queueUrl,
+        MessageBody : message
+    };
+    const command = new SendMessageCommand(input);
+    const response = await client.send(command);
+
+    return response['MessageId'];
+}
+
+async function receiveMessage(queueUrl) {
+    const input = {
+        QueueUrl: queueUrl
+    }
+
+    const command = new ReceiveMessageCommand(input);
+    const response = await client.send(command);
+    console.log(response)
+    return response;
+}
+
+async function deleteMessage(queueUrl, ) {
+    input = {
+        QueueUrl: queueUrl,
+        WaitTimeSeconds: 10,
+    }
+
+    const command = new SendMessageCommand(input);
+    const response = await client.send(command);
+
+    return response['MessageId'];
+}
+
+async function deleteQueue() {
+    params = {
+        'QueueUrl': queueUrl,
+    }
+
+    result = await mq.deleteQueue(params).promise();
+
+    console.log('Queue deleted')
+}
+
+const client = new SQSClient({
+    'credentails' : {
+        'accessKeyId': "YCAJEVX4iLmxHWwU3n7Z6InlC",
+        'secretAccessKey': "YCPNqKv682swLoxebhokTHfdQbcFUWp0TqbAeiof",
+    },
     'region': 'ru-central1',
     'endpoint': 'https://message-queue.api.cloud.yandex.net',
 });
 
-// async function createQueue() {
-//     params = {
-//         'QueueName': 'mq_example_nodejs_sdk',
-//     }
-//
-//     result = await mq.createQueue(params).promise();
-//     queueUrl = result['QueueUrl'];
-//
-//     console.log('Queue created, URL: ' + queueUrl);
-//
-//     return queueUrl;
-// }
-//
-// async function sendMessage(queueUrl) {
-//     params = {
-//         'QueueUrl': queueUrl,
-//         'MessageBody': 'test message',
-//     }
-//
-//     result = await mq.sendMessage(params).promise();
-//
-//     console.log('Message sent, ID: ' + result['MessageId']);
-// }
-//
-// async function receiveMessage() {
-//     params = {
-//         'QueueUrl': queueUrl,
-//         'WaitTimeSeconds': 10,
-//     }
-//
-//     result = await mq.receiveMessage(params).promise();
-//
-//     result['Messages'].forEach(async function(msg) {
-//         console.log('Message received')
-//         console.log('ID: ' + msg['MessageId'])
-//         console.log('Body: ' + msg['Body'])
-//
-//         deleteParams = {
-//             'QueueUrl': queueUrl,
-//             'ReceiptHandle': msg['ReceiptHandle'],
-//         }
-//
-//         await mq.deleteMessage(deleteParams).promise()
-//     })
-// }
-//
-// async function deleteQueue() {
-//     params = {
-//         'QueueUrl': queueUrl,
-//     }
-//
-//     result = await mq.deleteQueue(params).promise();
-//
-//     console.log('Queue deleted')
-// }
-
 app.post("/addImage", async function (request, response) {
     // const upload = await s3.Upload({buffer: request.files.photo.data}, "/gaika/");
-    params = {
-        'QueueName': 'mq_example_nodejs_sdk',
-    }
-
-    result = await mq.createQueue(params).promise();
-    queueUrl = result['QueueUrl'];
-
-    console.log('Queue created, URL: ' + queueUrl);
-
+    let queueUrl = await createQueue(client,  "message-queue-grebnev");
+    let messageId = await sendMessage(queueUrl, 'test message');
+    let fwewf = await receiveMessage(queueUrl);
+    // await deleteQueue(queueUrl);
     response.send(
         {
             'statusCode': 200,
