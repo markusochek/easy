@@ -1,7 +1,9 @@
 const express = require('express');
 const EasyYandexS3 = require("easy-yandex-s3");
 const expressFileUpload = require('express-fileupload');
-const { SQSClient, CreateQueueCommand, SendMessageCommand, ReceiveMessageCommand} = require("@aws-sdk/client-sqs");
+const { SQSClient, CreateQueueCommand, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand,
+    DeleteQueueCommand
+} = require("@aws-sdk/client-sqs");
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
@@ -9,23 +11,24 @@ app.use(express.json());
 
 app.use(expressFileUpload());
 
+const queueUrl = "https://message-queue.api.cloud.yandex.net/b1gt5r86r6tkhatg9ltm/dj600000001g9nqk05su/message-queue-grebnev"
+
 const s3 = new EasyYandexS3({
     auth: {
-        accessKeyId: "YCAJEVX4iLmxHWwU3n7Z6InlC",
-        secretAccessKey: "YCPNqKv682swLoxebhokTHfdQbcFUWp0TqbAeiof",
+        'accessKeyId': process.env.AWS_ACCESS_KEY_ID,
+        'secretAccessKey': process.env.AWS_SECRET_ACCESS_KEY,
     },
     Bucket: "object-storage-grebnev",
     debug: false
 });
 
-async function createQueue(client, QueueName) {
+async function createQueue(QueueName) {
     const input = {
         QueueName: QueueName,
     };
-    const command = new CreateQueueCommand(input);
-    const response = await client.send(command);
+    const response = await client.send(new CreateQueueCommand(input));
 
-    return response.QueueUrl;
+    return response['QueueUrl'];
 }
 
 async function sendMessage(queueUrl, message) {
@@ -33,66 +36,91 @@ async function sendMessage(queueUrl, message) {
         QueueUrl: queueUrl,
         MessageBody : message
     };
-    const command = new SendMessageCommand(input);
-    const response = await client.send(command);
-
-    return response['MessageId'];
+    let response = await client.send(new SendMessageCommand(input))
+    return response['MessageId']
 }
 
 async function receiveMessage(queueUrl) {
     const input = {
-        QueueUrl: queueUrl
-    }
-
-    const command = new ReceiveMessageCommand(input);
-    const response = await client.send(command);
-    console.log(response)
-    return response;
-}
-
-async function deleteMessage(queueUrl, ) {
-    input = {
         QueueUrl: queueUrl,
-        WaitTimeSeconds: 10,
+        WaitTimeSeconds: Number(1),
     }
-
-    const command = new SendMessageCommand(input);
-    const response = await client.send(command);
-
-    return response['MessageId'];
+    client.send(new ReceiveMessageCommand(input)).then(function(res) {
+        const inputDelete = {
+            QueueUrl: queueUrl,
+            WaitTimeSeconds: Number(1),
+            ReceiptHandle: res['Messages'][0]['ReceiptHandle'],
+        }
+        client.send(new DeleteMessageCommand(inputDelete))
+            .then(() => {
+                response.send(
+                    {
+                        statusCode: 200,
+                        body: res['Messages'][0]['Body']
+                    }
+                )
+            })
+    })
 }
 
-async function deleteQueue() {
-    params = {
-        'QueueUrl': queueUrl,
+async function deleteQueue(queueUrl) {
+    let input = {
+        QueueUrl: queueUrl,
     }
-
-    result = await mq.deleteQueue(params).promise();
-
-    console.log('Queue deleted')
+    await client.send(new DeleteQueueCommand(input));
 }
 
 const client = new SQSClient({
     'credentails' : {
-        'accessKeyId': "YCAJEVX4iLmxHWwU3n7Z6InlC",
-        'secretAccessKey': "YCPNqKv682swLoxebhokTHfdQbcFUWp0TqbAeiof",
+        'accessKeyId': process.env.AWS_ACCESS_KEY_ID,
+        'secretAccessKey': process.env.AWS_SECRET_ACCESS_KEY,
     },
     'region': 'ru-central1',
     'endpoint': 'https://message-queue.api.cloud.yandex.net',
 });
 
-app.post("/addImage", async function (request, response) {
-    // const upload = await s3.Upload({buffer: request.files.photo.data}, "/gaika/");
+app.post("/queues", async function (request, response) {
     let queueUrl = await createQueue(client,  "message-queue-grebnev");
-    let messageId = await sendMessage(queueUrl, 'test message');
-    let fwewf = await receiveMessage(queueUrl);
-    // await deleteQueue(queueUrl);
     response.send(
         {
-            'statusCode': 200,
-            'body': queueUrl
+            statusCode: 200,
+            body: queueUrl
         }
     )
+});
+
+app.post("/images", async function (request, response) {
+    const upload = await s3.Upload({buffer: request.files.photo.data}, "/gaika/");
+    let messageId = await sendMessage(queueUrl, upload.key);
+    response.send(
+        {
+            statusCode: 200,
+            body: messageId
+        }
+    )
+});
+
+app.get("/images", function (request, response) {
+    const input = {
+        QueueUrl: queueUrl,
+        WaitTimeSeconds: Number(1),
+    }
+    client.send(new ReceiveMessageCommand(input)).then(function(res) {
+        const inputDelete = {
+            QueueUrl: queueUrl,
+            WaitTimeSeconds: Number(1),
+            ReceiptHandle: res['Messages'][0]['ReceiptHandle'],
+        }
+        client.send(new DeleteMessageCommand(inputDelete))
+            .then(() => {
+                response.send(
+                    {
+                        statusCode: 200,
+                        body: res['Messages'][0]['Body']
+                    }
+                )
+            })
+    })
 });
 
 
