@@ -2,7 +2,7 @@ const express = require('express');
 const EasyYandexS3 = require("easy-yandex-s3");
 const expressFileUpload = require('express-fileupload');
 const { SQSClient, CreateQueueCommand, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand} = require("@aws-sdk/client-sqs");
-const {Driver, getCredentialsFromEnv, getLogger, IamAuthService, getSACredentialsFromJson, TableDescription, Column,
+const {Driver, getLogger, IamAuthService, getSACredentialsFromJson, TableDescription, Column,
     Types
 } = require('ydb-sdk');
 
@@ -65,6 +65,18 @@ async function deleteMessage(queueUrl, res) {
     }
     return client.send(new DeleteMessageCommand(inputDelete))
 }
+async function init() {
+    this.logger = getLogger({level: 'debug'});
+    const endpoint = 'grpcs://ydb.serverless.yandexcloud.net:2135';
+    const database = '/ru-central1/b1gt5r86r6tkhatg9ltm/etnf6f84qpet3koe51ik';
+    const saCredentials = getSACredentialsFromJson("authorized_key.json");
+    const authService = new IamAuthService(saCredentials);
+    this.driver = new Driver({endpoint, database, authService});
+    if (!await this.driver.ready(10000)) {
+        this.logger.fatal(`Driver has not become ready in 10 seconds!`);
+        process.exit(1);
+    }
+}
 
 app.post("/queues", async function (request, response) {
     let queueUrl = await createQueue(client,  "message-queue-grebnev");
@@ -75,6 +87,80 @@ app.post("/queues", async function (request, response) {
         }
     )
 });
+
+app.post("/images", async function (request, response) {
+    await init()
+    const upload = await s3.Upload({buffer: request.files.photo.data}, "/gaika/");
+    await sendMessage(queueUrl, upload.key);
+    // await createTable();
+
+    let image = {
+        createdAt: new Date(request.body.createdAt),
+        name: request.body.name,
+        fileSize: request.body.fileSize,
+        height: request.body.height,
+        width: request.body.width,
+    }
+    await addImageDB(image, upload.key);
+
+
+    response.send(
+        {
+            statusCode: 200,
+            body: "yes yes"
+        }
+    )
+});
+
+app.get("/images", async function (request, response) {
+    await init()
+    let allImages = [];
+    // let allImagesURLAndName = getAllImagesURLAndName()
+    getAllImagesURLAndName().then(allImagesURLAndName => {
+        let promiseFunctions = []
+        for (let key in allImagesURLAndName) {
+            promiseFunctions.push(new Promise((resolve, reject) => {
+                s3.Download(allImagesURLAndName[key].filePath).then(downloadImage => {
+                    allImages.push(Buffer.from(downloadImage['data']['Body']).toString('base64'))
+                    resolve()
+                })
+            }))
+        }
+        Promise.all(promiseFunctions)
+        .then(() => {
+            // let images = []
+            // for (let i = 0; i < allImages.length; i++) {
+                // images.push(`<img src="data:image/png;base64,${allImages[i]}"  alt="Image don't load..."/>`)
+            // }
+
+            response.send(
+                allImages
+            )
+        })
+    })
+});
+
+async function getAllImagesURLAndName() {
+    return await this.driver.tableClient.withSession(async (session) => {
+        const query = `
+            SELECT file_path,
+                   name,
+                   created_at
+            FROM images 
+            ORDER BY created_at DESC;`;
+        const {resultSets} = await session.executeQuery(query);
+
+        const resultSet = resultSets[0]
+        const allImages = []
+        for (let i = 0; i < resultSet.rows.length; i++)
+        {
+            const filePath = (resultSet.rows[i].items[0].textValue === null ? "gaika/248f6806-8667-4f72-8c70-a74b0f2e6187.png" : resultSet.rows[i].items[0].textValue)
+            const name = resultSet.rows[i].items[1].textValue
+            allImages.push({filePath, name})
+        }
+        return allImages
+    })
+}
 
 async function createTable() {
     await this.driver.tableClient.withSession(async (session) => {
@@ -103,53 +189,6 @@ async function addImageDB(image, uploadKey) {
         await session.executeQuery(query);
     });
 }
-
-app.post("/images", async function (request, response) {
-    const upload = await s3.Upload({buffer: request.files.photo.data}, "/gaika/");
-    await sendMessage(queueUrl, upload.key);
-
-    this.logger = getLogger({level: 'debug'});
-    const endpoint = 'grpcs://ydb.serverless.yandexcloud.net:2135';
-    const database = '/ru-central1/b1gt5r86r6tkhatg9ltm/etnf6f84qpet3koe51ik';
-    const saCredentials = getSACredentialsFromJson("authorized_key.json");
-    const authService = new IamAuthService(saCredentials);
-    this.driver = new Driver({endpoint, database, authService});
-    if (!await this.driver.ready(10000)) {
-        this.logger.fatal(`Driver has not become ready in 10 seconds!`);
-        process.exit(1);
-    }
-    // await createTable();
-
-    let image = {
-        createdAt: new Date(request.body.createdAt),
-        name: request.body.name,
-        fileSize: request.body.fileSize,
-        height: request.body.height,
-        width: request.body.width,
-    }
-    await addImageDB(image, upload.key);
-
-
-    response.send(
-        {
-            statusCode: 200,
-            body: "yes yes"
-        }
-    )
-});
-
-app.get("/images", function (request, response) {
-    receiveMessage(queueUrl)
-        .then(res => deleteMessage(queueUrl, res)
-        .then(() => {
-            response.send(
-                {
-                    statusCode: 200,
-                    body: res['Messages'][0]['Body']
-                }
-            )
-        }))
-});
 
 
 app.listen(3000);
