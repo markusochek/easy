@@ -120,10 +120,16 @@ app.get("/images", async function (request, response) {
         let promiseFunctions = []
         for (let key in allImagesURLAndName) {
             promiseFunctions.push(new Promise((resolve, reject) => {
+                console.log(allImagesURLAndName[key].filePath)
                 s3.Download(allImagesURLAndName[key].filePath).then(downloadImage => {
                     allImages.push(Buffer.from(downloadImage['data']['Body']).toString('base64'))
                     resolve()
                 })
+
+                // s3.Download(allImagesURLAndName[key].filePath).then(downloadImage => {
+                //     allImages.push(Buffer.from(downloadImage['data']['Body']).toString('base64'))
+                //     resolve()
+                // })
             }))
         }
         Promise.all(promiseFunctions)
@@ -144,7 +150,7 @@ async function getAllImagesURLAndName() {
     return await this.driver.tableClient.withSession(async (session) => {
         const query = `
             SELECT file_path,
-                   name,
+                    name,
                    created_at
             FROM images 
             ORDER BY created_at DESC;`;
@@ -189,7 +195,6 @@ async function addImageDB(image, uploadKey) {
         await session.executeQuery(query);
     });
 }
-
 
 app.listen(3000);
 // app.listen(process.env.PORT, () => {
