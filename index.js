@@ -1,4 +1,5 @@
 const express = require('express');
+const cors = require('cors');
 const EasyYandexS3 = require("easy-yandex-s3");
 const expressFileUpload = require('express-fileupload');
 const { SQSClient, CreateQueueCommand, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand} = require("@aws-sdk/client-sqs");
@@ -9,6 +10,7 @@ const {Driver, getLogger, IamAuthService, getSACredentialsFromJson, TableDescrip
 const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(cors())
 
 app.use(expressFileUpload());
 
@@ -31,14 +33,6 @@ const client = new SQSClient({
 });
 
 const queueUrl = "https://message-queue.api.cloud.yandex.net/b1gt5r86r6tkhatg9ltm/dj600000001g9nqk05su/message-queue-grebnev"
-async function createQueue(QueueName) {
-    const input = {
-        QueueName: QueueName,
-    };
-    const response = await client.send(new CreateQueueCommand(input));
-
-    return response['QueueUrl'];
-}
 
 async function sendMessage(queueUrl, message) {
     const input = {
@@ -78,22 +72,11 @@ async function init() {
     }
 }
 
-app.post("/queues", async function (request, response) {
-    let queueUrl = await createQueue(client,  "message-queue-grebnev");
-    response.send(
-        {
-            statusCode: 200,
-            body: queueUrl
-        }
-    )
-});
-
-app.post("/images", async function (request, response) {
+app.post("/api/images", async function (request, response) {
     await init()
-    const upload = await s3.Upload({buffer: request.files.photo.data}, "/gaika/");
+    const upload = await s3.Upload({buffer: request.files.file.data}, "/gaika/");
     await sendMessage(queueUrl, upload.key);
-    // await createTable();
-
+    // await createTable().then(() => {})
     let image = {
         createdAt: new Date(request.body.createdAt),
         name: request.body.name,
@@ -102,17 +85,15 @@ app.post("/images", async function (request, response) {
         width: request.body.width,
     }
     await addImageDB(image, upload.key);
-
-
     response.send(
         {
             statusCode: 200,
-            body: "yes yes"
+            body: true
         }
     )
 });
 
-app.get("/images", async function (request, response) {
+app.get("/api/images", async function (request, response) {
     await init()
     let allImages = [];
     // let allImagesURLAndName = getAllImagesURLAndName()
@@ -120,30 +101,34 @@ app.get("/images", async function (request, response) {
         let promiseFunctions = []
         for (let key in allImagesURLAndName) {
             promiseFunctions.push(new Promise((resolve, reject) => {
-                console.log(allImagesURLAndName[key].filePath)
                 s3.Download(allImagesURLAndName[key].filePath).then(downloadImage => {
-                    allImages.push(Buffer.from(downloadImage['data']['Body']).toString('base64'))
+                    allImages.push({
+                        buffer: Buffer.from(downloadImage['data']['Body']).toString('base64'),
+                        filePath: allImagesURLAndName[key].filePath,
+                    })
                     resolve()
                 })
-
-                // s3.Download(allImagesURLAndName[key].filePath).then(downloadImage => {
-                //     allImages.push(Buffer.from(downloadImage['data']['Body']).toString('base64'))
-                //     resolve()
-                // })
             }))
         }
         Promise.all(promiseFunctions)
         .then(() => {
-            // let images = []
-            // for (let i = 0; i < allImages.length; i++) {
-                // images.push(`<img src="data:image/png;base64,${allImages[i]}"  alt="Image don't load..."/>`)
-            // }
-
             response.send(
                 allImages
             )
         })
     })
+});
+
+app.delete('/api/images/', async function (request, response) {
+    // await init()
+    console.log(request.query.filePath)
+    response.send()
+});
+
+app.get('/api/images/original', async function (request, response) {
+    // await init()
+    console.log(request.query.filePath)
+    response.send()
 });
 
 async function getAllImagesURLAndName() {
@@ -160,7 +145,7 @@ async function getAllImagesURLAndName() {
         const allImages = []
         for (let i = 0; i < resultSet.rows.length; i++)
         {
-            const filePath = (resultSet.rows[i].items[0].textValue === null ? "gaika/248f6806-8667-4f72-8c70-a74b0f2e6187.png" : resultSet.rows[i].items[0].textValue)
+            const filePath = resultSet.rows[i].items[0].textValue
             const name = resultSet.rows[i].items[1].textValue
             allImages.push({filePath, name})
         }
