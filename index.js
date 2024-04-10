@@ -100,10 +100,10 @@ app.get("/api/images", async function (request, response) {
         let promiseFunctions = []
         for (let key in allImagesURLAndName) {
             promiseFunctions.push(new Promise((resolve, reject) => {
-                s3.Download(allImagesURLAndName[key].filePath).then(downloadImage => {
+                s3.Download(allImagesURLAndName[key].smallFilePath).then(downloadImage => {
                     allImages.push({
                         buffer: Buffer.from(downloadImage['data']['Body']).toString('base64'),
-                        filePath: allImagesURLAndName[key].filePath,
+                        filePath: allImagesURLAndName[key].smallFilePath,
                     })
                     resolve()
                 })
@@ -130,14 +130,17 @@ app.delete('/api/images/', async function (request, response) {
 
 app.get('/api/images/original', async function (request, response) {
     await init()
-    console.log(request.query.filePath)
-    response.send()
+    await getImageBySmallFilePath(request.query.filePath).then(filePath => {
+        s3.Download(filePath).then(downloadImage => {
+            response.send(downloadImage)
+        })
+    })
 });
 
 async function getAllImagesURLAndName() {
     return await this.driver.tableClient.withSession(async (session) => {
         const query = `
-            SELECT file_path,
+            SELECT small_file_path,
                     name,
                    created_at
             FROM images 
@@ -148,9 +151,9 @@ async function getAllImagesURLAndName() {
         const allImages = []
         for (let i = 0; i < resultSet.rows.length; i++)
         {
-            const filePath = resultSet.rows[i].items[0].textValue
+            const smallFilePath = resultSet.rows[i].items[0].textValue
             const name = resultSet.rows[i].items[1].textValue
-            allImages.push({filePath, name})
+            allImages.push({smallFilePath, name})
         }
         return allImages
     })
@@ -227,11 +230,10 @@ async function getImageBySmallFilePath(smallFilePath) {
     return await this.driver.tableClient.withSession(async (session) => {
         const query = `
             SELECT file_path
-            FROM photos WHERE small_file_path = '${smallFilePath}'`;
+            FROM images WHERE small_file_path = '${smallFilePath}'`;
         const {resultSets} = await session.executeQuery(query);
         const resultSet = resultSets[0]
-        const filePath = resultSet.rows[0].items[0].textValue
-        return filePath
+        return resultSet.rows[0].items[0].textValue
     })
 }
 
