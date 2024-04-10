@@ -11,7 +11,6 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(cors())
-
 app.use(expressFileUpload());
 
 const s3 = new EasyYandexS3({
@@ -88,7 +87,7 @@ app.post("/api/images", async function (request, response) {
     response.send(
         {
             statusCode: 200,
-            body: true
+            filePath: upload.key
         }
     )
 });
@@ -120,13 +119,17 @@ app.get("/api/images", async function (request, response) {
 });
 
 app.delete('/api/images/', async function (request, response) {
-    // await init()
-    console.log(request.query.filePath)
-    response.send()
+    await init()
+    await deleteImage(request.query.filePath).then(() => {
+        response.send({
+            statusCode: 200,
+            body: true
+        })
+    })
 });
 
 app.get('/api/images/original', async function (request, response) {
-    // await init()
+    await init()
     console.log(request.query.filePath)
     response.send()
 });
@@ -179,6 +182,57 @@ async function addImageDB(image, uploadKey) {
                 `;
         await session.executeQuery(query);
     });
+}
+
+async function deleteImage(filePath) {
+    return await this.driver.tableClient.withSession(async (session) => {
+        const query = `
+            SELECT file_path,
+                   small_file_path
+            FROM images WHERE file_path = '${filePath}'`;
+        const {resultSets} = await session.executeQuery(query);
+        const resultSet = resultSets[0]
+        const resultJson = []
+        for (let i = 0; i < resultSet.rows.length; i++)
+        {
+            const filePath = resultSet.rows[i].items[0].textValue
+            let small_file_path = resultSet.rows[i].items[1].textValue
+            const filePathArr = filePath.split("/")
+            let filePathToDelete = filePathArr[filePathArr.length-2] + "/" + filePathArr[filePathArr.length-1]
+            await s3.Remove(filePathToDelete)
+            await s3.Remove(small_file_path)
+            resultJson.push(filePath)
+        }
+
+        for (let i = 0; i<resultJson.length; i++)
+        {
+            await deletePhotoByPathFromTable(resultJson[i])
+        }
+
+    });
+}
+
+async function deletePhotoByPathFromTable(filePath){
+    return await this.driver.tableClient.withSession(async (session) => {
+        const query = `
+            DELETE FROM images 
+            WHERE file_path = "${filePath}";`
+        console.log(query)
+        await session.executeQuery(query);
+    });
+
+}
+
+async function getImageBySmallFilePath(smallFilePath) {
+    return await this.driver.tableClient.withSession(async (session) => {
+        const query = `
+            SELECT file_path
+            FROM photos WHERE small_file_path = '${smallFilePath}'`;
+        const {resultSets} = await session.executeQuery(query);
+        const resultSet = resultSets[0]
+        const filePath = resultSet.rows[0].items[0].textValue
+        return filePath
+    })
 }
 
 app.listen(3000);
