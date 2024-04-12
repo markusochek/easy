@@ -132,7 +132,11 @@ app.get('/api/images/original', async function (request, response) {
     await init()
     await getImageBySmallFilePath(request.query.filePath).then(filePath => {
         s3.Download(filePath).then(downloadImage => {
-            response.send(downloadImage)
+            response.send(
+                {
+                    buffer: Buffer.from(downloadImage['data']['Body']).toString('base64')
+                }
+            )
         })
     })
 });
