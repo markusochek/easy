@@ -23,7 +23,7 @@ const s3 = new EasyYandexS3({
 });
 
 const client = new SQSClient({
-    'credentails' : {
+    'credentials' : {
         'accessKeyId': "YCAJEVX4iLmxHWwU3n7Z6InlC",
         'secretAccessKey': "YCPNqKv682swLoxebhokTHfdQbcFUWp0TqbAeiof",
     },
