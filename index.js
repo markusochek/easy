@@ -15,8 +15,8 @@ app.use(expressFileUpload());
 
 const s3 = new EasyYandexS3({
     auth: {
-        'accessKeyId': process.env.AWS_ACCESS_KEY_ID,
-        'secretAccessKey': process.env.AWS_SECRET_ACCESS_KEY,
+        'accessKeyId': "YCAJEVX4iLmxHWwU3n7Z6InlC",
+        'secretAccessKey': "YCPNqKv682swLoxebhokTHfdQbcFUWp0TqbAeiof",
     },
     Bucket: "object-storage-grebnev",
     debug: false
@@ -24,8 +24,8 @@ const s3 = new EasyYandexS3({
 
 const client = new SQSClient({
     'credentails' : {
-        'accessKeyId': process.env.AWS_ACCESS_KEY_ID,
-        'secretAccessKey': process.env.AWS_SECRET_ACCESS_KEY,
+        'accessKeyId': "YCAJEVX4iLmxHWwU3n7Z6InlC",
+        'secretAccessKey': "YCPNqKv682swLoxebhokTHfdQbcFUWp0TqbAeiof",
     },
     'region': 'ru-central1',
     'endpoint': 'https://message-queue.api.cloud.yandex.net',
